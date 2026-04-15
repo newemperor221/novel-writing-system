@@ -9,7 +9,7 @@ Multi-agent orchestration system for Chinese web novel writing (番茄/起点 pl
 - **11 specialized agents** defined in `agents/*.md` (YAML frontmatter + markdown prompts)
 - **Node.js orchestrator** (`src/orchestrator.ts`) spawns each agent via `claude --print --agent --dangerously-skip-permissions`
 - **7 truth files** per book as the single source of truth
-- **33-dimension continuity audit** for every chapter
+- **3-layer AI-taste + fatigue + continuity audit** for every chapter
 - **Anti-AI-taste** at 3 layers: vocabulary, sentence patterns, style fingerprint
 - **Daemon mode** for background autonomous writing with webhook notifications
 
@@ -74,7 +74,7 @@ Extracts 9 categories of facts from draft: character states, locations, resource
 **Output**: `runtime/{book-id}/chapter-{n}/06-facts.json`
 
 ### AUDITOR
-33-dimension continuity audit against 7 truth files.
+3-layer audit: (1) Structural AI-Tell — paragraph uniformity, hedge density, transition repetition, list structures; (2) Long-Span Fatigue — cross-chapter monotony in type/mood/title/opening/ending; (3) Continuity + Poison Points + Style. Reads chapter_summaries.json for fatigue detection.
 **Output**: `runtime/{book-id}/chapter-{n}/07-audit.json`
 
 ### REVISER
@@ -175,9 +175,9 @@ novel-writing-workflow/
 
 ## Anti-AI-Taste Layers
 
-1. **Vocabulary fatigue**: Banned words (因此、然而、但是...) in `config/fatigue_lexicon/`
-2. **Sentence patterns**: Banned patterns (LLM causal chains, "只见" overuse) in `config/banned_patterns/`
-3. **Style fingerprint**: Analyze reference text → inject style into subsequent chapters
+1. **Layer 1 — Structural AI-Tell**: dim20段落均匀度(dim20)、dim21套话密度(dim21)、dim22公式化转折(dim22)、dim23列表式结构(dim23)
+2. **Layer 2 — Long-Span Fatigue**: 跨章章节类型单调、情绪单调、标题坍缩、开头同构、结尾同构
+3. **Layer 3 — Vocabulary + Patterns**: Banned words + banned sentence patterns + platform poison points
 
 ## Platform Support
 
