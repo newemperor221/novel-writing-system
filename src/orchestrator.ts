@@ -19,6 +19,10 @@ const RUNTIME_DIR = (bookId: string, chapter: number) =>
   path.join(WORKFLOW_DIR, 'runtime', bookId, `chapter-${String(chapter).padStart(3, '0')}`);
 const BOOKS_DIR = (bookId: string) => path.join(WORKFLOW_DIR, 'books', bookId, 'chapters');
 
+// Cache for state files — avoids repeated reads during a pipeline run
+const stateCache = new Map<string, { mtime: number; data: any }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 // Colors
 const RED = '\x1b[0;31m';
 const GREEN = '\x1b[0;32m';
@@ -127,8 +131,26 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 async function readJson(filePath: string): Promise<any> {
-  const content = await fs.readFile(filePath, 'utf-8');
-  return JSON.parse(content);
+  try {
+    const stat = await fs.stat(filePath);
+    const mtime = stat.mtimeMs;
+    const cached = stateCache.get(filePath);
+    if (cached && cached.mtime === mtime) {
+      return cached.data;
+    }
+    const content = await fs.readFile(filePath, 'utf-8');
+    const data = JSON.parse(content);
+    stateCache.set(filePath, { mtime, data });
+    return data;
+  } catch {
+    const content = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(content);
+  }
+}
+
+function writeJson(filePath: string, data: any): Promise<void> {
+  stateCache.delete(filePath);
+  return fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
 
 async function getNextChapter(bookId: string): Promise<number> {
@@ -477,7 +499,7 @@ Output: Update these files in ${STATE_DIR(bookId)}/:`;
   const state = await readJson(stateFile);
   state.chapter = chapter;
   state.lastUpdated = new Date().toISOString();
-  await fs.writeFile(stateFile, JSON.stringify(state, null, 2));
+  await writeJson(stateFile, state);
 
   // Append to chapter_summaries
   const summariesFile = `${STATE_DIR(bookId)}/chapter_summaries.json`;
@@ -493,7 +515,7 @@ Output: Update these files in ${STATE_DIR(bookId)}/:`;
     createdAt: new Date().toISOString()
   });
   summaries.lastUpdated = new Date().toISOString();
-  await fs.writeFile(summariesFile, JSON.stringify(summaries, null, 2));
+  await writeJson(summariesFile, summaries);
 
   console.log(`\n${GREEN}✓ Chapter ${chapter} completed!${NC}\n`);
   console.log(`Output: books/${bookId}/chapters/ch-${String(chapter).padStart(3, '0')}.${booksExt}`);
