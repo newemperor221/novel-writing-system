@@ -1,0 +1,37 @@
+# 玄幻题材配置
+
+[genre]
+id = "xuanhuan"
+name = "玄幻"
+description = "中国特色奇幻，含修炼、飞升、仙侠等元素"
+
+[rules]
+# 节奏模板: Setup | Conflict | Growth | Climax | Hook
+pacing_template = "setup_20|conflict_25|growth_20|climax_20|hook_15"
+chapter_hook_required = true
+min_chapter_words = 2500
+max_chapter_words = 3500
+
+# 修炼体系规则
+cultivation_system = true
+breakthrough_requires_cost = true
+必须有具体灵力/境界描写 = true
+
+[audit_dimensions]
+character_weight = 1.2
+world_weight = 1.0
+plot_weight = 1.1
+magic_system_weight = 1.0
+
+[forbidden_elements]
+cliche_tropes = ["完全无代价突破", "一秒十更", "无敌流开局"]
+forbidden_endings = ["大圆满结局"]
+
+[specific_rules]
+# 修炼相关
+境界描述 = "必须使用具体境界名称（炼气、筑基、金丹...）"
+战斗描写 = "必须包含招式名称和灵力消耗"
+突破场景 = "必须包含代价/风险/磨难"
+
+# 伏笔相关
+伏笔回收周期 = 10  # 每10章至少回收一个伏笔

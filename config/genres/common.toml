@@ -1,0 +1,32 @@
+# 通用写作规则
+
+[global]
+max_sentence_length = 30
+min_sentence_length = 5
+max_paragraph_length = 200
+dialogue_ratio_target = 0.3
+paragraph_avg_length = 50
+
+[anti_ai_taste]
+fatigue_lexicon_strict = true
+banned_patterns_strict = true
+style_fingerprint_enabled = true
+
+# 词汇疲劳词表
+fatigue_files = [
+  "fatigue_lexicon/high_freq_llm.txt",
+  "fatigue_lexicon/transition_fatigue.txt",
+  "fatigue_lexicon/emotion_fatigue.txt"
+]
+
+# 禁用句式模式
+banned_pattern_files = [
+  "banned_patterns/sentence_patterns.txt"
+]
+
+[word_count]
+zh_chars_per_word = 2  # 中文字符估算
+
+[continuity]
+snapshot_before_write = true
+verify_after_write = true

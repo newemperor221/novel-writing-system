@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Book-specific state (per-book, not committed)
+state/
+runtime/
+books/
+
+# Logs
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~

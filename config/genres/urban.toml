@@ -1,0 +1,29 @@
+# 都市题材配置
+
+[genre]
+id = "urban"
+name = "都市"
+description = "现代都市背景，含异能、职场、商战等"
+
+[rules]
+# 节奏模板: Daily | Incident | Maneuvering | Confrontation | Resolution
+pacing_template = "daily_15|incident_20|maneuver_25|confront_25|resolution_15"
+chapter_hook_required = true
+min_chapter_words = 2500
+max_chapter_words = 4000
+
+[audit_dimensions]
+character_weight = 1.3
+world_weight = 0.9
+plot_weight = 1.0
+social_weight = 1.2
+
+[forbidden_elements]
+cliche_tropes = ["送外卖/快递/保镖被嘲笑", "女主必被误会"]
+forbidden_endings = []
+
+[specific_rules]
+# 社会规则
+地点描写 = "必须符合现代都市特征"
+职业规则 = "职业行为必须符合现实逻辑"
+社交礼仪 = "人物互动必须符合社会规范"

@@ -1,0 +1,50 @@
+# 起点中文网平台配置
+
+[platform]
+id = "qidian"
+name = "起点中文网"
+emoji = "📚"
+
+[chapter_format]
+# 章节标题格式
+chapter_title_template = "第{n}章 {title}"
+# 段落分隔符（换行）
+paragraph_separator = "\n"
+# 首行缩进（两个全角空格）
+first_line_indent = true
+first_line_indent_chars = "　　"
+# 章节钩子
+chapter_hook = "——————"
+chapter_hook_style = "line"
+# 对话引号风格
+dialogue_quotes = ["「", "」"]
+
+[word_count]
+min = 3000
+ideal = 4000
+max = 5000
+hard_max = 6000
+
+[upload]
+format = "html"
+encoding = "utf-8"
+newline = "windows"
+filename_pattern = "{book_title}_第{n}章_{title}.html"
+
+[vip]
+vip_marker = "[VIP]"
+auto_vip = true
+vip_threshold_words = 3000
+
+[engagement]
+# 起点有投票机制
+月票_enabled = true
+recommend票_enabled = true
+打赏_enabled = true
+# 订阅追踪
+track_subscription = true
+
+[platform_tips]
+recommended_daily = 1
+best_update_time = "18:00"
+chapter_hook_advice = "结尾留悬念，引导读者订阅VIP章节"

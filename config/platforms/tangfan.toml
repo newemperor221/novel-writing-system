@@ -1,0 +1,67 @@
+# 番茄小说平台配置
+
+[platform]
+id = "tangfan"
+name = "番茄小说"
+emoji = "🍅"
+platform_tips_url = "https://writer.fanqie.com"
+
+[chapter_format]
+# 章节标题格式
+chapter_title_template = "第{n}章 {title}"
+# 段落分隔符（空行）
+paragraph_separator = "\n\n"
+# 首行缩进（番茄不需要）
+first_line_indent = false
+first_line_indent_chars = ""
+# 章节钩子（留空引导章说互动）
+chapter_hook = "     "
+chapter_hook_style = "blank"
+# 对话引号风格
+dialogue_quotes = ["「", "」"]
+
+[word_count]
+# 番茄标准：2000-3500字
+min = 2000
+ideal = 2800
+max = 3000
+hard_max = 3500
+# 中文句长参数
+chinese_avg_sentence_length = 20
+chinese_min_sentence = 5
+chinese_max_sentence = 35
+
+[upload]
+format = "txt"
+encoding = "utf-8"
+newline = "unix"
+filename_pattern = "{book_title}_第{n}章_{title}.txt"
+
+[engagement]
+# 章说（评论区）— 番茄核心互动
+chapter_comments = true
+# 票票（投票）
+票票_enabled = false
+# 追读率追踪
+track_retention = true
+# 章说讨论点建议
+chapter_comment_questions = 1  # 每章至少1个可讨论的点
+
+[platform_tips]
+recommended_daily = 2
+best_update_time = "12:00, 20:00"
+chapter_hook_advice = "章末留白或冲突，引导读者在评论区讨论"
+pacing_advice = "每500字一个钩子，3分钟阅读内要有小高潮"
+
+[fanqie_specific]
+# 番茄专项规则
+open_girl_protagonist_banned = true  # 开局送女=毒点
+saint_protagonist_banned = true      # 圣母主角=毒点
+ai_causal_chain_banned = true         # AI因果链=毒点
+power_collapse_banned = true          # 战力崩坏=毒点
+
+# 章节结构（5-3-2-2-1法则）
+structure_setup = 0.50   # 铺垫50%
+structure_conflict = 0.30  # 冲突30%
+structure_climax = 0.20   # 高潮20%
+# 注：钩子从高潮中抽出最后100字
