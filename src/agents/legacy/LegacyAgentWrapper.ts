@@ -44,7 +44,7 @@ export class LegacyAgentWrapper extends AgentBase {
   async execute(context: ExecutionContext): Promise<ExecutionResult> {
     return this.run(context, async () => {
       const output = await this.runLegacyAgent(context);
-      return { outputs: output.files };
+      return { outputs: output.files, inputTokens: output.inputTokens, outputTokens: output.outputTokens };
     });
   }
 
@@ -53,7 +53,7 @@ export class LegacyAgentWrapper extends AgentBase {
    */
   private runLegacyAgent(
     context: ExecutionContext
-  ): Promise<{ files: string[]; output: string }> {
+  ): Promise<{ files: string[]; output: string; inputTokens?: number; outputTokens?: number }> {
     return new Promise((resolve, reject) => {
       const prompt = this.buildPrompt(context);
       const escapedPrompt = prompt.replace(/'/g, "'\\''");
@@ -78,7 +78,8 @@ export class LegacyAgentWrapper extends AgentBase {
       proc.on('close', (code) => {
         if (code === 0) {
           const files = this.extractOutputFiles(context);
-          resolve({ files, output: stdout });
+          const tokens = this.parseTokenUsage(stderr);
+          resolve({ files, output: stdout, ...tokens });
         } else {
           reject(new Error(`Agent ${this.config.agentName} failed (${code}): ${stderr}`));
         }
@@ -382,6 +383,23 @@ Output directory: ${context.runtimeDir}`;
       default:
         return [];
     }
+  }
+
+  /**
+   * Parse token usage from claude --print stderr output
+   * claude outputs stats like: "Input: 1,234 tokens | Output: 5,678 tokens"
+   */
+  private parseTokenUsage(stderr: string): { inputTokens?: number; outputTokens?: number } {
+    const inputMatch = stderr.match(/Input:\s*([\d,]+)\s*tokens/i);
+    const outputMatch = stderr.match(/Output:\s*([\d,]+)\s*tokens/i);
+
+    const parseNum = (m: RegExpMatchArray | null) =>
+      m ? parseInt(m[1].replace(',', ''), 10) : undefined;
+
+    return {
+      inputTokens: parseNum(inputMatch),
+      outputTokens: parseNum(outputMatch),
+    };
   }
 }
 

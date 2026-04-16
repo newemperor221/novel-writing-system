@@ -382,6 +382,8 @@ export interface ExecutionResult {
   outputs: string[];
   duration: number;
   error?: string;
+  inputTokens?: number;
+  outputTokens?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -399,6 +401,9 @@ export interface WorkflowResult {
   duration: number;
   error?: string;
   phasesCompleted: PhaseName[];
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  totalCostUsd?: number;
 }
 
 // ============================================================

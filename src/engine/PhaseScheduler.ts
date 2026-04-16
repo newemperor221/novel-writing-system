@@ -31,6 +31,8 @@ interface PhaseResult {
   success: boolean;
   duration: number;
   error?: string;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 interface PhaseSchedulerConfig {
@@ -209,6 +211,8 @@ export class PhaseScheduler {
         success: result.success,
         duration,
         error: result.error,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
       });
 
       this.completedPhases.add(phase);

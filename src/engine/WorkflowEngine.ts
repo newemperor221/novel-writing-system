@@ -14,6 +14,7 @@ import * as path from 'path';
 import { EventBus, getEventBus } from '../events/EventBus.js';
 import { DependencyGraph, getDependencyGraph } from './DependencyGraph.js';
 import { PhaseScheduler } from './PhaseScheduler.js';
+import { TokenBudgetController } from './TokenBudgetController.js';
 import { ChapterStateMachine } from '../state-machine/ChapterStateMachine.js';
 import { AgentRegistry, getAgentRegistry } from '../agents/AgentRegistry.js';
 import {
@@ -100,6 +101,11 @@ export class WorkflowEngine {
     await fs.mkdir(context.runtimeDir, { recursive: true });
     await fs.mkdir(context.booksDir, { recursive: true });
 
+    // Truncate context files before execution (prevents context explosion)
+    const tokenBudget = new TokenBudgetController(this.workDir);
+    const truncated = await tokenBudget.buildContext(bookId);
+    // buildContext already writes truncated files in-place, no further action needed
+
     // Emit chapter started event
     const startedEvent: ChapterStartedEvent = {
       type: EventType.CHAPTER_STARTED,
@@ -118,6 +124,22 @@ export class WorkflowEngine {
       // Check for failures
       const failedPhases = Array.from(phaseResults.values()).filter((r) => !r.success);
       const success = failedPhases.length === 0;
+
+      // Calculate token totals from all phases
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
+      for (const result of phaseResults.values()) {
+        totalInputTokens += result.inputTokens || 0;
+        totalOutputTokens += result.outputTokens || 0;
+      }
+
+      // Calculate cost (Sonnet pricing: $3/1M input, $15/1M output)
+      const inputCost = (totalInputTokens / 1_000_000) * 3;
+      const outputCost = (totalOutputTokens / 1_000_000) * 15;
+      const totalCost = inputCost + outputCost;
+
+      // Write to cost log
+      await this.writeCostLog(bookId, chapterNumber, totalInputTokens, totalOutputTokens, totalCost);
 
       // Calculate totals
       const phasesCompleted = Array.from(phaseResults.entries())
@@ -152,6 +174,9 @@ export class WorkflowEngine {
         duration: totalDuration,
         phasesCompleted,
         error: failedPhases.length > 0 ? failedPhases[0].error : undefined,
+        totalInputTokens,
+        totalOutputTokens,
+        totalCostUsd: totalCost,
       };
     } catch (error) {
       const totalDuration = Date.now() - startTime;
@@ -162,6 +187,9 @@ export class WorkflowEngine {
         duration: totalDuration,
         phasesCompleted: [],
         error: error instanceof Error ? error.message : 'Unknown error',
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalCostUsd: 0,
       };
     } finally {
       this.isRunning = false;
@@ -242,6 +270,41 @@ export class WorkflowEngine {
    */
   needsIntervention(chapterId: string): boolean {
     return this.stateMachine.needsIntervention(chapterId);
+  }
+
+  /**
+   * Write cost data to cost log
+   */
+  private async writeCostLog(
+    bookId: string,
+    chapterNumber: number,
+    inputTokens: number,
+    outputTokens: number,
+    costUsd: number
+  ): Promise<void> {
+    const costLogPath = path.join(this.workDir, '.cost_log.json');
+    let entries: Array<Record<string, unknown>> = [];
+
+    try {
+      const content = await fs.readFile(costLogPath, 'utf-8');
+      entries = JSON.parse(content);
+    } catch {
+      entries = [];
+    }
+
+    entries.push({
+      timestamp: new Date().toISOString(),
+      bookId,
+      chapter: chapterNumber,
+      inputTokens,
+      outputTokens,
+      costUsd: parseFloat(costUsd.toFixed(6)),
+    });
+
+    // Keep last 500 entries
+    entries = entries.slice(-500);
+
+    await fs.writeFile(costLogPath, JSON.stringify(entries, null, 2), 'utf-8');
   }
 }
 

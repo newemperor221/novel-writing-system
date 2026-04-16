@@ -26,6 +26,7 @@ interface PipelineOptions {
   context?: string;
   skipAudit?: boolean;
   force?: boolean;
+  platform?: string;
   mode?: WorkflowMode;
 }
 
@@ -56,7 +57,7 @@ async function getPlatform(bookId: string): Promise<string> {
 }
 
 async function runPipeline(options: PipelineOptions) {
-  const { bookId, chapterNumber, context, skipAudit, force, mode } = options;
+  const { bookId, chapterNumber, context, skipAudit, force, mode, platform: platformOverride } = options;
 
   console.log(`${BLUE}╔══════════════════════════════════════════════════════╗${NC}`);
   console.log(`${BLUE}║         Event-Driven Multi-Agent Pipeline            ║${NC}`);
@@ -64,7 +65,7 @@ async function runPipeline(options: PipelineOptions) {
 
   // Determine chapter number
   const chapter = chapterNumber || await getNextChapter(bookId);
-  const platform = await getPlatform(bookId);
+  const platform = platformOverride || await getPlatform(bookId);
   const booksPath = path.join(WORKFLOW_DIR, 'books', bookId, 'chapters');
 
   console.log(`${GREEN}Book:${NC}     ${bookId}`);
@@ -102,7 +103,11 @@ async function runPipeline(options: PipelineOptions) {
       await log('ENGINE', '✓', `Chapter ${chapter} completed in ${result.duration}ms`);
       console.log(`\n${GREEN}✓ Chapter ${chapter} completed!${NC}\n`);
       console.log(`Output: ${result.outputFile}`);
-      console.log(`Phases: ${result.phasesCompleted.join(' → ')}\n`);
+      console.log(`Phases: ${result.phasesCompleted.join(' → ')}`);
+      if (result.totalCostUsd !== undefined && result.totalCostUsd > 0) {
+        console.log(`Tokens: ${result.totalInputTokens?.toLocaleString()} in / ${result.totalOutputTokens?.toLocaleString()} out`);
+        console.log(`Cost: $${result.totalCostUsd.toFixed(4)}\n`);
+      }
     } else {
       await log('ENGINE', '✗', `Failed: ${result.error}`);
       console.log(`\n${RED}✗ Chapter ${chapter} failed${NC}\n`);
@@ -122,10 +127,32 @@ async function runPipeline(options: PipelineOptions) {
 async function main() {
   const args = process.argv.slice(2);
 
+  // Handle special commands first
+  if (args[0] === '--cost') {
+    const costLog = process.env.HOME + '/.inkos/cost_log.json';
+    const { promises: fs } = await import('fs');
+    try {
+      const content = await fs.readFile(costLog, 'utf-8');
+      const entries = JSON.parse(content);
+      const total = entries.reduce((sum: number, e: any) => sum + (parseFloat(e.cost_usd) || 0), 0);
+      const count = entries.length;
+      console.log(`Total cost: $${total.toFixed(4)} across ${count} API calls`);
+      if (args[1] === '--book' && args[2]) {
+        const bookEntries = entries.filter((e: any) => e.book_id === args[2]);
+        const bookTotal = bookEntries.reduce((sum: number, e: any) => sum + (parseFloat(e.cost_usd) || 0), 0);
+        console.log(`Book ${args[2]}: $${bookTotal.toFixed(4)} across ${bookEntries.length} calls`);
+      }
+    } catch {
+      console.log('No cost data found. Run some chapters first.');
+    }
+    return;
+  }
+
   let bookId = '';
   let chapterNumber: number | undefined;
   let context = '';
   let skipAudit = false;
+  let platform = '';
   let force = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -139,6 +166,12 @@ async function main() {
       case '--skip-audit':
         skipAudit = true;
         break;
+      case '--no-audit':
+        skipAudit = true;
+        break;
+      case '--platform':
+        platform = args[++i];
+        break;
       case '--force':
         force = true;
         break;
@@ -148,7 +181,8 @@ async function main() {
   }
 
   if (!bookId) {
-    console.error('Usage: ts-node src/orchestrator.ts <book-id> [--chapter <n>] [--context "<text>"] [--skip-audit] [--force]');
+    console.error('Usage: ts-node src/orchestrator.ts <book-id> [--chapter <n>] [--context "<text>"] [--skip-audit|--no-audit] [--platform <plat>] [--force]');
+    console.error('       ts-node src/orchestrator.ts --cost [--book <book-id>]');
     process.exit(1);
   }
 
@@ -159,6 +193,7 @@ async function main() {
       context,
       skipAudit,
       force,
+      platform,
     });
   } catch (error) {
     console.error(`\n${RED}✗ Pipeline failed:${NC} ${error instanceof Error ? error.message : 'Unknown error'}`);
