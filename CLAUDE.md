@@ -1,17 +1,56 @@
-# Novel Writing Multi-Agent Workflow
+# Novel Writing Multi-Agent System
 
-Multi-agent orchestration system for Chinese web novel writing (番茄/起点 platforms).
+Event-driven multi-agent orchestration system for Chinese web novel writing (番茄/起点 platforms).
 
 ## Architecture
 
-**Native Claude Code multi-agent system** using `claude --print --agent` for each phase:
+**Event-driven architecture** with parallel execution support:
 
 - **11 specialized agents** defined in `agents/*.md` (YAML frontmatter + markdown prompts)
-- **Node.js orchestrator** (`src/orchestrator.ts`) spawns each agent via `claude --print --agent --dangerously-skip-permissions`
+- **Event Bus** (`src/events/EventBus.ts`) for agent communication via pub/sub
+- **Workflow Engine** (`src/engine/WorkflowEngine.ts`) coordinates the pipeline
+- **Phase Scheduler** (`src/engine/PhaseScheduler.ts`) enables parallel execution
 - **7 truth files** per book as the single source of truth
 - **3-layer AI-taste + fatigue + continuity audit** for every chapter
 - **Anti-AI-taste** at 3 layers: vocabulary, sentence patterns, style fingerprint
-- **Daemon mode** for background autonomous writing with webhook notifications
+
+### Key Components
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      EVENT BUS                               │
+│         (发布/订阅，Agent 之间通信)                            │
+└─────────────────────────────────────────────────────────────┘
+              │           │           │
+              ▼           ▼           ▼
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  WORKFLOW   │  │    AGENT    │  │    STATE    │
+│   ENGINE    │  │   REGISTRY  │  │   MACHINE   │
+│ (调度器)     │  │  (Agent定义) │  │ (生命周期)   │
+└─────────────┘  └─────────────┘  └─────────────┘
+```
+
+### Parallel Execution
+
+```
+PLANNER
+   ├──► ARCHITECT ──┐
+   │                │
+   └──► COMPOSER  ──┴────► WRITER ──► OBSERVER ──► AUDITOR
+                                                             │
+                                           ┌─────────────────┴─────────────────┐
+                                      PASS                          FAIL
+                                           │                              │
+                                       (skip)                    REVISER ──► (re-audit)
+                                           │                              │
+                                           └──────────────────────────────┘
+                                                              │
+                                           ┌─────────────────┴─────────────────┐
+                                         NORMALIZER ◄──────────► EDITOR (并行)
+                                                              │
+                                                              ▼
+                                                    FACTS-KEEPER
+```
 
 ## Quick Start
 
@@ -19,8 +58,11 @@ Multi-agent orchestration system for Chinese web novel writing (番茄/起点 pl
 # Initialize a new book
 ./scripts/init-book.sh "我的小说" --genre xuanhuan --platform tangfan
 
-# Write next chapter (full pipeline - native Claude Code agents)
-./scripts/write-next-native.sh <book-id>
+# Write next chapter (full pipeline with audit)
+./scripts/write-next.sh <book-id>
+
+# Write next chapter (fast mode, skip audit)
+./scripts/write-next.sh <book-id> --skip-audit
 
 # Audit existing chapter
 ./scripts/audit.sh <book-id> 5
@@ -32,67 +74,73 @@ Multi-agent orchestration system for Chinese web novel writing (番茄/起点 pl
 ./scripts/daemon.sh <book-id> --count 10 --notify
 ```
 
-## Agent Roles
+## Workflow Modes
 
-Each agent is a **native Claude Code agent** defined in `agents/*.md` with YAML frontmatter:
-```yaml
----
-name: PLANNER
-description: Chapter intent definition
-tools: ["Read", "Write", "Glob"]
-model: sonnet
----
+| Mode | Description |
+|------|-------------|
+| `FULL` | Complete pipeline with audit (default) |
+| `FAST` | Skip audit (same as `--skip-audit`) |
+| `AUDIT_ONLY` | Only run AUDITOR on existing draft |
+| `REVISE_ONLY` | Only run REVISER on existing audit |
+| `EXPORT_ONLY` | Only run EDITOR for export |
+
+## Source Structure
+
+```
+src/
+├── orchestrator.ts              # CLI entry point
+├── events/
+│   ├── EventBus.ts             # Pub/sub for agent communication
+│   └── EventTypes.ts           # Event type definitions
+├── engine/
+│   ├── WorkflowEngine.ts        # Main workflow coordinator
+│   ├── PhaseScheduler.ts       # Parallel phase execution
+│   └── DependencyGraph.ts      # DAG for phase dependencies
+├── agents/
+│   ├── AgentBase.ts            # Base class for agents
+│   ├── AgentRegistry.ts        # Agent registration
+│   └── legacy/
+│       └── LegacyAgentWrapper.ts  # Wrap existing agents/*.md
+└── state-machine/
+    └── ChapterStateMachine.ts   # Chapter lifecycle states
 ```
 
-The **Node.js orchestrator** (`src/orchestrator.ts`) spawns each agent via `claude --print --agent`.
+## Agent Roles
+
+Each agent is a **native Claude Code agent** defined in `agents/*.md` with YAML frontmatter. The `LegacyAgentWrapper` spawns them via `claude --print --agent`.
 
 ### RADAR
 Market trend scanner. Scans 番茄/起点 for hot tropes and reader preferences.
-**Command**: `./scripts/radar.sh <book-id>`
 
 ### PLANNER
 Reads author intent + truth files → produces chapter intent (must-keep/must-avoid).
-**Output**: `runtime/{book-id}/chapter-{n}/01-intent.md`
-
-### COMPOSER
-Compiles relevant context from 7 truth files, builds rule priority stack.
-**Input**: All truth files + PLANNER output
-**Output**: `runtime/{book-id}/chapter-{n}/03-context.json`, `04-rule-stack.yaml`
 
 ### ARCHITECT
-Designs chapter structure: scenes, beats, pacing arc.
-**Input**: PLANNER intent
-**Output**: `runtime/{book-id}/chapter-{n}/02-architecture.md`
+Designs chapter structure: scenes, beats, pacing arc. **Runs in parallel with COMPOSER.**
+
+### COMPOSER
+Compiles relevant context from truth files, builds rule priority stack. **Runs in parallel with ARCHITECT.**
 
 ### WRITER
 Generates raw chapter prose with anti-AI-taste rules active.
-**Input**: ARCHITECT blueprint + COMPOSER context
-**Output**: `runtime/{book-id}/chapter-{n}/05-draft.md`
 
 ### OBSERVER
-Extracts 9 categories of facts from draft: character states, locations, resources, relationships, emotions, information, hooks, time, physical state.
-**Output**: `runtime/{book-id}/chapter-{n}/06-facts.json`
+Extracts 9 categories of facts from draft for truth file updates.
 
 ### AUDITOR
-3-layer audit: (1) Structural AI-Tell — paragraph uniformity, hedge density, transition repetition, list structures; (2) Long-Span Fatigue — cross-chapter monotony in type/mood/title/opening/ending; (3) Continuity + Poison Points + Style. Reads chapter_summaries.json for fatigue detection.
-**Output**: `runtime/{book-id}/chapter-{n}/07-audit.json`
+3-layer audit: (1) Structural AI-Tell, (2) Long-Span Fatigue, (3) Continuity + Poison Points.
 
 ### REVISER
-Auto-fixes CRITICAL/HIGH issues identified by AUDITOR. Flags MEDIUM/LOW for human.
-**Output**: `runtime/{book-id}/chapter-{n}/08-revised.md`
+Auto-fixes CRITICAL/HIGH issues. Runs in loop until AUDITOR passes.
 
 ### NORMALIZER
-Adjusts word count to target range (±10%) without cutting plot.
-**Output**: `runtime/{book-id}/chapter-{n}/09-normalized.md`
+Adjusts word count to target range without cutting plot. **Runs in parallel with EDITOR.**
 
 ### EDITOR
-Applies platform format (番茄 or 起点). Injects chapter title, paragraph separators, hooks.
-**Output**: `books/{book-id}/chapters/ch-{n}.md`
+Applies platform format (番茄 or 起点). **Runs in parallel with NORMALIZER.**
 
 ### FACTS-KEEPER
-Updates all 7 truth files with extracted facts. Zod schema validation on every update.
-**Input**: OBSERVER output
-**Output**: Updated `state/{book-id}/*.json`
+Updates all 7 truth files atomically with Zod schema validation.
 
 ## Truth Files (7 per book)
 
@@ -106,13 +154,32 @@ Updates all 7 truth files with extracted facts. Zod schema validation on every u
 | `emotional_arcs.json` | Character emotional arcs |
 | `character_matrix.json` | Character relationships and interaction history |
 
+## Chapter State Machine
+
+```
+CREATED → PLANNING → ARCHITECTING/COMPOSING → WRITING → OBSERVING → AUDITING
+                                                                      │
+                                          ┌─────────────────┴─────────────────┐
+                                     PASS                          FAIL
+                                           │                              │
+                                       (skip)                    REVISING
+                                           │                              │
+                                           └──────────────────────────────┘
+                                                              │
+                                          ┌─────────────────┴─────────────────┐
+                                    NORMALIZING ◄──────────► EDITING (并行)
+                                                              │
+                                                              ▼
+                                                    TRUTH_UPDATING → COMPLETED
+```
+
 ## Directory Structure
 
 ```
 novel-writing-workflow/
 ├── CLAUDE.md                    # This file
 ├── WORKFLOW.md                  # Detailed technical documentation
-├── agents/                      # Native Claude Code agent definitions (YAML frontmatter)
+├── agents/                      # Native Claude Code agent definitions
 │   ├── RADAR.md
 │   ├── PLANNER.md
 │   ├── COMPOSER.md
@@ -124,60 +191,40 @@ novel-writing-workflow/
 │   ├── NORMALIZER.md
 │   ├── EDITOR.md
 │   ├── FACTS-KEEPER.md
-│   └── ORCHESTRATOR.md          # Pipeline orchestrator agent (prompt-based)
+│   └── ORCHESTRATOR.md
 ├── scripts/                     # Executable workflow scripts
 │   ├── init-book.sh
-│   ├── write-next-native.sh     # Primary entry point (Node.js orchestrator)
+│   ├── write-next.sh           # Primary entry point
 │   ├── audit.sh
 │   ├── export.sh
 │   └── daemon.sh
-├── state/                       # Truth files (per book)
+├── src/                        # TypeScript source
+│   ├── orchestrator.ts         # CLI entry point
+│   ├── events/                 # Event-driven infrastructure
+│   ├── engine/                 # Workflow engine
+│   ├── agents/                 # Agent framework
+│   └── state-machine/          # State machine
+├── state/                      # Truth files (per book)
 │   └── {book-id}/
-│       ├── current_state.json
-│       ├── particle_ledger.json
-│       ├── pending_hooks.json
-│       ├── chapter_summaries.json
-│       ├── subplot_board.json
-│       ├── emotional_arcs.json
-│       ├── character_matrix.json
-│       └── author_intent.json
 ├── runtime/                     # Per-chapter working files
 │   └── {book-id}/
 │       └── chapter-{n}/
-│           ├── 01-intent.md
-│           ├── 02-architecture.md
-│           ├── 03-context.json
-│           ├── 04-rule-stack.yaml
-│           ├── 05-draft.md
-│           ├── 06-facts.json
-│           ├── 07-audit.json
-│           ├── 08-revised.md
-│           ├── 09-normalized.md
-│           └── 10-final.md
-├── books/                       # Published content
+├── books/                      # Published content
 │   └── {book-id}/
-│       ├── book_rules.md
-│       ├── story_bible.md
 │       └── chapters/
-├── config/                      # Configuration
-│   ├── platforms/               # Platform-specific settings
-│   ├── genres/                  # Genre templates
-│   ├── fatigue_lexicon/         # AI fatigue word lists
-│   └── banned_patterns/         # Banned sentence patterns
-├── world/                       # Multi-book world/series management
-│   └── {world-id}/
-├── src/                         # TypeScript source
-│   ├── orchestrator.ts          # Node.js pipeline orchestrator (spawns agents)
-│   ├── types/
-│   └── lib/
-└── logs/                        # Execution logs
+├── config/                     # Configuration
+│   ├── platforms/
+│   ├── genres/
+│   ├── fatigue_lexicon/
+│   └── banned_patterns/
+└── world/                      # Multi-book world/series management
 ```
 
 ## Anti-AI-Taste Layers
 
-1. **Layer 1 — Structural AI-Tell**: dim20段落均匀度(dim20)、dim21套话密度(dim21)、dim22公式化转折(dim22)、dim23列表式结构(dim23)
-2. **Layer 2 — Long-Span Fatigue**: 跨章章节类型单调、情绪单调、标题坍缩、开头同构、结尾同构
-3. **Layer 3 — Vocabulary + Patterns**: Banned words + banned sentence patterns + platform poison points
+1. **Layer 1 — Vocabulary Fatigue**: banned words (因此、然而、但是...)
+2. **Layer 2 — Structural AI-Tells**: paragraph uniformity, hedge density, transition repetition
+3. **Layer 3 — Long-Span Fatigue**: cross-chapter monotony in type/mood/title/opening/ending
 
 ## Platform Support
 
