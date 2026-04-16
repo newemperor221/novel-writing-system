@@ -20,6 +20,8 @@ model: sonnet
 - Genre: `{genre}`
 - Platform: `{platform}`
 
+**Also read**: `state/{book_id}/quality_history.json` — 上章/近章质量分。如果连续低分（如overall_score<60），本章应降低节奏难度或减少多线叙事。
+
 ## Truth File Inputs (自动注入)
 
 你将自动收到以下真相文件的相关内容：

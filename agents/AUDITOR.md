@@ -186,6 +186,12 @@ Write to `runtime/{bookId}/chapter-{n}/07-audit.json`:
     "opening_dice_pair": [0.72, 0.68],
     "ending_dice_pair": [0.65, 0.71]
   },
+  "quality_scores": {
+    "overall_score": 78,
+    "style_score": 75,
+    "continuity_score": 80,
+    "structure_score": 82
+  },
   "summary": "0 CRITICAL, 1 WARNING, 2 INFO"
 }
 ```

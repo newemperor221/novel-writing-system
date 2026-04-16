@@ -33,6 +33,11 @@ interface PhaseResult {
   error?: string;
 }
 
+interface PhaseSchedulerConfig {
+  maxConcurrency?: number;
+  maxRevisionIterations?: number;  // Default 3
+}
+
 export class PhaseScheduler {
   private eventBus: EventBus;
   private dependencyGraph: DependencyGraph;
@@ -42,6 +47,8 @@ export class PhaseScheduler {
   private pendingPhases: Set<PhaseName>;
   private phaseResults: Map<PhaseName, PhaseResult>;
   private maxConcurrency: number;
+  private maxRevisionIterations: number;
+  private revisionIterations: number;
   private isRunning: boolean;
   private abortController: AbortController | null;
   private currentContext: ExecutionContext | null = null;
@@ -50,7 +57,7 @@ export class PhaseScheduler {
     eventBus: EventBus,
     dependencyGraph: DependencyGraph,
     agentRegistry: AgentRegistry,
-    maxConcurrency = 2
+    config: PhaseSchedulerConfig = {}
   ) {
     this.eventBus = eventBus;
     this.dependencyGraph = dependencyGraph;
@@ -59,7 +66,9 @@ export class PhaseScheduler {
     this.completedPhases = new Set();
     this.pendingPhases = new Set();
     this.phaseResults = new Map();
-    this.maxConcurrency = maxConcurrency;
+    this.maxConcurrency = config.maxConcurrency ?? 2;
+    this.maxRevisionIterations = config.maxRevisionIterations ?? 3;
+    this.revisionIterations = 0;
     this.isRunning = false;
     this.abortController = null;
   }
@@ -78,6 +87,7 @@ export class PhaseScheduler {
     this.activePhases.clear();
     this.pendingPhases.clear();
     this.phaseResults.clear();
+    this.revisionIterations = 0;
 
     const phases = this.getPhasesForMode(mode);
     phases.forEach((p) => this.pendingPhases.add(p));
@@ -152,6 +162,27 @@ export class PhaseScheduler {
    * Start a specific phase
    */
   private startPhase(phase: PhaseName, context: ExecutionContext): void {
+    // Check revision iteration cap before starting AUDITOR
+    if (phase === 'AUDITOR') {
+      if (this.revisionIterations >= this.maxRevisionIterations) {
+        this.phaseResults.set(phase, {
+          phase,
+          success: false,
+          duration: 0,
+          error: `PIPELINE PAUSE: max revision iterations (${this.maxRevisionIterations}) reached. Chapter requires human review.`,
+        });
+        this.eventBus.publish({
+          type: EventType.CHAPTER_PAUSED,
+          bookId: context.bookId,
+          chapterNumber: context.chapterNumber,
+          reason: 'max_iterations_reached',
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+      this.revisionIterations++;
+    }
+
     const phaseContext: ExecutionContext = {
       ...context,
       phase,

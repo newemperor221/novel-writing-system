@@ -30,6 +30,7 @@ import {
 export interface WorkflowEngineConfig {
   workDir: string;
   maxConcurrency?: number;
+  maxRevisionIterations?: number;
   eventBus?: EventBus;
   dependencyGraph?: DependencyGraph;
   agentRegistry?: AgentRegistry;
@@ -54,7 +55,7 @@ export class WorkflowEngine {
       this.eventBus,
       this.dependencyGraph,
       this.agentRegistry,
-      config.maxConcurrency || 2
+      { maxConcurrency: config.maxConcurrency || 2, maxRevisionIterations: config.maxRevisionIterations }
     );
     this.isRunning = false;
   }

@@ -199,6 +199,12 @@ model: opus
 {章节结尾钩子 — 留 1-2 句悬念引导读者继续}
 ```
 
+## Style Variation (风格扰动)
+
+以下为**风格扰动参数**（来自 StylePerturbator），选择性应用：
+
+{style_instructions}
+
 ## Quality Checklist
 
 - [ ] 无禁用词汇
