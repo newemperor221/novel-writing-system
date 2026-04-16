@@ -1,15 +1,68 @@
-# Novel Writing Workflow
+# Novel Writing System
 
-基于 InkOS 架构的 Claude Code 多 Agent 小说写作工作流，支持番茄小说、起点中文网等平台。
+基于事件驱动的多 Agent 协作系统，为中文网络小说（番茄小说、起点中文网）实现自动化写作管道。
 
-## 特性
+## 核心架构
 
-- **11 个专业 Agent**：RADAR → PLANNER → COMPOSER → ARCHITECT → WRITER → OBSERVER → AUDITOR → REVISER → NORMALIZER → EDITOR → FACTS-KEEPER
-- **7 个真相文件**：确保全书一致性
-- **33 维度连续性审计**：角色、资源、伏笔、情感弧线等
-- **3 层去 AI 味机制**：词汇疲劳词表 + 禁用句式 + 文风指纹
-- **守护进程模式**：后台自动写章 + Webhook 通知
-- **多平台适配**：番茄小说 / 起点中文网
+```
+PLANNER
+   ├──► ARCHITECT ──┐
+   │                │
+   └──► COMPOSER  ──┴────► WRITER ──► OBSERVER ──► AUDITOR
+                                                             │
+                                           ┌─────────────────┴─────────────────┐
+                                      PASS                          FAIL
+                                           │                              │
+                                       (skip)                    REVISER ──► (re-audit)
+                                           │                              │
+                                           └──────────────────────────────┘
+                                                              │
+                                           ┌─────────────────┴─────────────────┐
+                                    NORMALIZING ◄──────────► EDITING (并行)
+                                                              │
+                                                              ▼
+                                                    TRUTH_UPDATING → COMPLETED
+```
+
+- **事件总线** (EventBus)：Agent 之间通过发布/订阅通信
+- **并行执行**：ARCHITECT + COMPOSER、NORMALIZER + EDITOR 可同时运行
+- **状态机**：章节生命周期自动管理（CREATED → ... → COMPLETED）
+
+## 11 个专业 Agent
+
+| Agent | 职责 |
+|-------|------|
+| **RADAR** | 市场趋势扫描，热点套路分析 |
+| **PLANNER** | 读取作者意图 + 真相文件 → 章节意图 |
+| **ARCHITECT** | 设计章节结构：场景、节拍、节奏线 |
+| **COMPOSER** | 编译上下文，构建规则优先级栈 |
+| **WRITER** | 生成章节正文，启用去 AI 味规则 |
+| **OBSERVER** | 从草稿中提取 9 类事实 |
+| **AUDITOR** | 三层审计：AI 味 / 疲劳 / 连续性 |
+| **REVISER** | 自动修复 CRITICAL/HIGH 问题 |
+| **NORMALIZER** | 调整字数至目标区间（不删情节）|
+| **EDITOR** | 应用平台格式（番茄/起点）|
+| **FACTS-KEEPER** | 原子更新 7 个真相文件 |
+
+## 真相文件（7 个）
+
+确保全书一致性，每次章节完成后原子更新。
+
+| 文件 | 用途 |
+|------|------|
+| `current_state.json` | 世界状态：地点、主角、敌人 |
+| `particle_ledger.json` | 资源追踪：灵力、金钱、声望 |
+| `pending_hooks.json` | 伏笔追踪：open/progressing/deferred/resolved |
+| `chapter_summaries.json` | 每章摘要：角色、事件、状态变化 |
+| `subplot_board.json` | 支线进度 |
+| `emotional_arcs.json` | 角色情感弧线 |
+| `character_matrix.json` | 角色关系网 |
+
+## 去 AI 味三层机制
+
+1. **词汇层**：禁用词表（因此、然而、但是、缓缓、猛然...）
+2. **句式层**：段落均匀度、过渡词密度、开头重复
+3. **长程层**：跨章类型/情绪/标题/开篇/结尾的单调性
 
 ## 快速开始
 
@@ -17,132 +70,82 @@
 
 ```bash
 # 需要 jq 和 Node.js 22+
-sudo apt install jq  # Ubuntu
-brew install jq      # macOS
+sudo apt install jq
 
-# API Key
 export ANTHROPIC_API_KEY="sk-ant-..."
-# 或创建 ~/.inkos/.env
 ```
 
 ### 2. 初始化新书
 
 ```bash
-cd novel-writing-workflow
 ./scripts/init-book.sh "我的小说" --genre xuanhuan --platform tangfan
 ```
 
 ### 3. 写章节
 
 ```bash
-# 完整管线（写作+审计+修订）
+# 完整管道（写作+审计+修订）
 ./scripts/write-next.sh <book-id>
 
-# 仅写作草稿（跳过审计）
-./scripts/write-next.sh <book-id> --no-audit
+# 快速模式（跳过审计）
+./scripts/write-next.sh <book-id> --skip-audit
 
-# 指定章节上下文
-./scripts/write-next.sh <book-id> --context "本章聚焦师徒矛盾"
+# 指定上下文
+./scripts/write-next.sh <book-id> --context "聚焦师徒矛盾"
 ```
 
-### 4. 导出
+### 4. 审计已有章节
 
 ```bash
-# 导出 TXT
-./scripts/export.sh <book-id> --platform tangfan --format txt
-
-# 导出 EPUB
-./scripts/export.sh <book-id> --format epub
+./scripts/audit.sh <book-id> 5
 ```
 
-### 5. 守护进程
+### 5. 导出
 
 ```bash
-# 后台写 10 章，每 30 分钟检查
-./scripts/daemon.sh <book-id> --count 10 --interval 30 --notify --webhook https://...
-
-# 查看状态
-./scripts/daemon.sh <book-id> --status
-
-# 停止
-./scripts/daemon.sh <book-id> --stop
+./scripts/export.sh <book-id> --platform tangfan
 ```
 
-## 项目结构
+### 6. 后台守护进程
 
-```
-novel-writing-workflow/
-├── CLAUDE.md                    # Agent 角色定义
-├── WORKFLOW.md                  # 详细技术文档
-├── agents/                      # Agent prompt 定义
-│   ├── PLANNER.md
-│   ├── WRITER.md
-│   ├── AUDITOR.md
-│   └── ...
-├── scripts/                     # 工作流脚本
-│   ├── init-book.sh            # 初始化书籍
-│   ├── write-next.sh           # 完整管线
-│   ├── audit.sh                # 审计章节
-│   ├── export.sh               # 导出平台格式
-│   └── daemon.sh               # 守护进程
-├── state/                       # 真相文件（per-book）
-│   └── {book-id}/
-│       ├── current_state.json
-│       ├── particle_ledger.json
-│       ├── pending_hooks.json
-│       └── ...
-├── books/                       # 书籍内容（per-book）
-│   └── {book-id}/
-│       └── chapters/
-├── config/                      # 配置
-│   ├── platforms/              # 平台配置
-│   ├── genres/                 # 题材配置
-│   ├── fatigue_lexicon/        # AI 疲劳词表
-│   └── banned_patterns/        # 禁用句式
-└── runtime/                    # 运行时产物
-    └── {book-id}/
-        └── chapter-{n}/
+```bash
+./scripts/daemon.sh <book-id> --count 10 --notify
 ```
 
-## 真相文件
-
-| 文件 | 用途 |
-|------|------|
-| `current_state.json` | 世界状态 |
-| `particle_ledger.json` | 资源账本 |
-| `pending_hooks.json` | 伏笔追踪 |
-| `chapter_summaries.json` | 章节摘要 |
-| `subplot_board.json` | 支线进度 |
-| `emotional_arcs.json` | 情感弧线 |
-| `character_matrix.json` | 角色关系 |
-
-## 去 AI 味
+## 目录结构
 
 ```
-# 禁用词
-因此、然而、但是、于是、总之
-此时、此刻、缓缓、渐渐、猛然
-
-# 句式规则
-- 避免"只见"开头
-- 避免3+连续"他..."开头
-- 避免"被...所..."被动句过度
+novel-writing-system/
+├── src/
+│   ├── orchestrator.ts           # CLI 入口
+│   ├── events/
+│   │   ├── EventBus.ts           # 发布/订阅通信
+│   │   └── EventTypes.ts         # 事件类型定义
+│   ├── engine/
+│   │   ├── WorkflowEngine.ts     # 主工作流引擎
+│   │   ├── PhaseScheduler.ts     # 并行阶段调度
+│   │   └── DependencyGraph.ts    # DAG 依赖图
+│   ├── agents/
+│   │   ├── AgentBase.ts          # Agent 基类
+│   │   ├── AgentRegistry.ts      # Agent 注册表
+│   │   └── legacy/
+│   │       └── LegacyAgentWrapper.ts
+│   └── state-machine/
+│       └── ChapterStateMachine.ts # 章节生命周期
+├── agents/                       # Agent Prompt 定义
+├── scripts/                      # 工作流脚本
+├── state/{book-id}/              # 真相文件
+├── runtime/{book-id}/chapter-{n}/ # 运行时产物
+└── books/{book-id}/chapters/     # 输出章节
 ```
 
-## 配置
+## 技术栈
 
-### 平台
-
-编辑 `config/platforms/` 下的 TOML 文件：
-- `tangfan.toml` — 番茄小说
-- `qidian.toml` — 起点中文网
-
-### 题材
-
-编辑 `config/genres/` 下的 TOML 文件：
-- `xuanhuan.toml` — 玄幻
-- `urban.toml` — 都市
-- `common.toml` — 通用规则
+- **TypeScript** + **Node.js 22**
+- **事件驱动**：Pub/Sub 架构
+- **并行调度**：DAG + PhaseScheduler
+- **状态机**：XState 风格的章节生命周期
+- **CLI**：原生 TypeScript，无额外框架
 
 ## License
 
